@@ -1,4 +1,3 @@
-
 from random import choice, randint
 from typing import Optional
 from time import time
@@ -7,30 +6,30 @@ import pygame as pg
 
 pg.init()
 
-"""Размеры игрового окна и элементов интерфейса""" 
+"""Константы для размеров поля и сетки""" 
 SCREEN_WIDTH, SCREEN_HEIGHT = 640, 480
 MENU_WIDTH, MENU_HEIGHT = 200, 200
 TITLE_MENU_WIDTH, TITLE_MENU_HEIGHT = MENU_WIDTH, 50
-SCREEN_CENTER = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+MIDDLE_SCREEN = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
 GRID_SIZE = 20
 MENU_FONT_SIZE = 35
 TITLE_FONT_SIZE = 60
 GRID_WIDTH = SCREEN_WIDTH // GRID_SIZE
 GRID_HEIGHT = SCREEN_HEIGHT // GRID_SIZE
-TOTAL_CELLS = GRID_WIDTH * GRID_HEIGHT
-AVAILABLE_CELLS = set(
+FIELD_SIZE = GRID_WIDTH * GRID_HEIGHT
+FIELD_CELLS = set(
     (x * GRID_SIZE, y * GRID_SIZE)
     for x in range(GRID_WIDTH)
     for y in range(GRID_HEIGHT)
 )
 
-"""Векторы перемещения"""
+"""Направления движения"""
 UP = (0, -1)
 DOWN = (0, 1)
 LEFT = (-1, 0)
 RIGHT = (1, 0)
 
-"""Цветовая схема игры"""
+"""Цвета объектов и игрового поля."""
 BOARD_BACKGROUND_COLOR = (47, 71, 22)
 BORDER_COLOR = (93, 216, 228)
 MAIN_MENU_COLOR = (200, 200, 200)
@@ -40,64 +39,70 @@ SNAKE_COLOR = (0, 255, 0)
 STONE_COLOR = (107, 99, 92)
 DEFAULT_COLOR = (0, 0, 0)
 
-"""Параметры игровой механики"""
-FPS = 60
-SLOW_MODE_FPS = 10
+"""Управление скорость и замедлением игры."""
+GAME_SPEED = 60
+SLOW_SPEED = 10
 
-"""Настройки игровых объектов"""
-INITIAL_APPLES = 20
-INITIAL_STONES = 10
-STONE_DAMAGE = 5
+"""Количество игровых объектов на поле."""
+DEFAULT_COUNT_APPLES = 20
+DEFAULT_COUNT_STONES = 10
+DEFAULT_STONE_WEIGHT = 5
 
-"""Управление"""
+"""Клавиши."""
 KEY_ENTER = 13
 
-"""Инициализация игрового окна"""
+"""Основной эран игры."""
 screen = pg.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), 0, 32)
 
-"""Инициализация меню"""
+"""Меню игры."""
 main_menu = pg.Surface((MENU_WIDTH, MENU_HEIGHT))
-main_menu_rect = main_menu.get_rect(center=SCREEN_CENTER)
+main_menu_rect = main_menu.get_rect(center=MIDDLE_SCREEN)
 title_menu = pg.Surface((TITLE_MENU_WIDTH, TITLE_MENU_HEIGHT))
 title_menu_rect = main_menu.get_rect(
     center=(SCREEN_WIDTH // 2, main_menu_rect.y + TITLE_MENU_HEIGHT)
 )
 
-"""Создание фонового слоя"""
+"""Объект в котором будет хранится фон для игры."""
 background_surface = pg.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+
+"""Создание фона для созданиея на ней текстуры (например песка)."""
 background_surface.fill(BOARD_BACKGROUND_COLOR)
+
+"""Отрисовка фона на экране"""
 screen.blit(background_surface, (0, 0))
 
-"""Настройка заголовка окна"""
-set_window_title = pg.display.set_caption
-set_window_title('Змейка')
+"""Создаем объект для управления заголовком игры."""
+game_caption = pg.display.set_caption
+game_caption('Змейка')
 
-"""Инициализация шрифтов"""
+"""Создаем объект текст."""
 menu_font = pg.font.Font(None, MENU_FONT_SIZE)
 title_font = pg.font.Font(None, TITLE_FONT_SIZE)
 
-"""Инициализация таймера"""
+"""Объект для управления временем."""
 clock = pg.time.Clock()
 
 
 class GameObject():
-    """Базовый класс для всех игровых объектов"""
+    """Базовый класс от которого наследуются все игровые объекты."""
 
     def __init__(self,
                  body_color: tuple[int, int, int] = DEFAULT_COLOR,
                  name: Optional[str] = None) -> None:
-        """Создает новый игровой объект с заданным цветом и именем"""
-        self.position: tuple[int, int] = SCREEN_CENTER
+        """Инициализирует новый экземпляр класса {GameObject}."""
+        self.position: tuple[int, int] = MIDDLE_SCREEN
         self.body_color = body_color
         self.name = name or str(type(self).__name__).lower()
 
     def draw(self) -> None:
-        """Отрисовывает объект на экране"""
+        """Базовый метод рисования объектов. Определяется для
+        каждого подкласса отдельно.
+        """
 
-    def render_cell(self, position: tuple[int, int],
+    def draw_cell(self, position: tuple[int, int],
                   color: Optional[tuple[int, int, int]] = None,
-                  is_tail: bool = False) -> None:
-        """Отрисовывает клетку объекта с заданным цветом и границей"""
+                  tail: bool = False) -> None:
+        """Отрисовывает ячейку заданых размеров."""
         color = color or self.body_color
 
         rect = pg.Rect(
@@ -105,447 +110,466 @@ class GameObject():
             (GRID_SIZE, GRID_SIZE)
         )
         pg.draw.rect(screen, color, rect)
-        if not is_tail:
+        if not tail:
             pg.draw.rect(screen, BORDER_COLOR, rect, 1)
 
-    def place_randomly(self,
-                      occupied_cells: list[tuple[int, int]] = []) -> None:
-        """Размещает объект в случайной свободной клетке поля"""
-        self.position = choice(tuple(AVAILABLE_CELLS - set(occupied_cells)))
+    def randomize_position(self,
+                           used_cells: list[tuple[int, int]] = []) -> None:
+        """Задаёт объекту случайные координаты."""
+        self.position = choice(tuple(FIELD_CELLS - set(used_cells)))
 
 
 class Apple(GameObject):
-    """Игровой объект, который змейка может съесть для роста"""
+    """Класс описывающий игровой объект Яблоко."""
 
     def __init__(self,
                  body_color: tuple[int, int, int] = APPLE_COLOR,
-                 occupied_cells: list = [],
+                 used_cells: list = [],
                  name: Optional[str] = None) -> None:
-        """Создает яблоко в случайной позиции"""
+        """Инициализирует экземпляр класса {Apple}."""
         super().__init__(body_color, name)
-        self.place_randomly(occupied_cells)
+        self.randomize_position(used_cells)
 
     def draw(self) -> None:
-        """Отрисовывает яблоко на экране"""
-        self.render_cell(self.position)
+        """Рисует объект на экране."""
+        self.draw_cell(self.position)
 
 
 class Stone(GameObject):
-    """Препятствие, которое уменьшает длину змейки при столкновении"""
+    """Класс описывающий игровой объект Камень."""
 
     def __init__(self,
                  body_color: tuple[int, int, int] = STONE_COLOR,
-                 occupied_cells: list = [],
-                 damage: int = STONE_DAMAGE) -> None:
-        """Создает камень с заданным уроном"""
+                 used_cells: list = [],
+                 weight: int = DEFAULT_STONE_WEIGHT) -> None:
+        """Инициализирует экземпляр класса."""
         super().__init__(body_color)
-        self.place_randomly(occupied_cells)
-        self.damage = damage
+        self.randomize_position(used_cells)
+        self.weight = weight
 
     def draw(self) -> None:
-        """Отрисовывает камень на экране"""
-        self.render_cell(self.position)
+        """Рисует объет на экране."""
+        self.draw_cell(self.position)
 
 class Snake(GameObject):
-    """Основной игровой персонаж, управляемый игроком"""
+    """Класс описывающий игровой объект 'Змейка'."""
 
     def __init__(self,
                  body_color: tuple[int, int, int] = SNAKE_COLOR) -> None:
-        """Создает змейку в начальном состоянии"""
+        """Инициализирует экземпляр класса {Snake}."""
         super().__init__(body_color)
         self.reset()
         self.direction: tuple[int, int] = RIGHT
 
     def reset(self) -> None:
-        """Возвращает змейку в начальное состояние"""
-        self.segments = [self.position]
+        """Сбрасывает змейку в начальное состояние."""
+        self.positions = [self.position]
         self.length = 1
-        self.last_segment: Optional[tuple[int, int]] = None
+        self.last: Optional[tuple[int, int]] = None
         self.direction = choice([RIGHT, LEFT, UP, DOWN])
 
-    def set_direction(self, direction: tuple[int, int]) -> None:
-        """Изменяет направление движения змейки"""
+    def update_direction(self, direction: tuple[int, int]) -> None:
+        """Обновляет направление движения змейки."""
         self.direction = direction
 
-    def calculate_next_head(self) -> tuple[int, int]:
-        """Вычисляет позицию следующего сегмента головы"""
-        head_x, head_y = self.get_head_position()
+    def new_head(self) -> tuple[int, int]:
+        """Возвращает координаты новой головы."""
+        pos_x, pos_y = self.get_head_position()
         return (
-            (head_x + self.direction[0] * GRID_SIZE) % SCREEN_WIDTH,
-            (head_y + self.direction[1] * GRID_SIZE) % SCREEN_HEIGHT
+            (pos_x + self.direction[0] * GRID_SIZE) % SCREEN_WIDTH,
+            (pos_y + self.direction[1] * GRID_SIZE) % SCREEN_HEIGHT
         )
 
-    def add_segment(self, position: tuple[int, int]) -> None:
-        """Добавляет новый сегмент в начало змейки"""
-        self.segments.insert(0, position)
-        self.update_length()
+    def grow_up(self, new_segment: tuple[int, int]) -> None:
+        """Увиличивает змейку на один сегмент."""
+        self.positions.insert(0, new_segment)
+        self.update_size_info()
 
-    def remove_tail(self) -> None:
-        """Удаляет последний сегмент змейки"""
-        self.segments.pop()
-        self.update_length()
+    def cut_tail(self) -> None:
+        """Уменьшает змейку на один сегмент с конца."""
+        self.positions.pop()
+        self.update_size_info()
 
-    def update_length(self) -> None:
-        """Обновляет информацию о текущей длине змейки"""
-        self.length = len(self.segments)
-        game.update_snake_stats(self.length)
+    def update_size_info(self) -> None:
+        """Обновляет информацию о размере змейки."""
+        self.length = len(self.positions)
+        game.update_snake_length(self.length)
 
     def get_head_position(self) -> tuple[int, int]:
-        """Возвращает текущую позицию головы змейки"""
-        return self.segments[0]
+        """Возвращает позицию головы змейки."""
+        return self.positions[0]
 
     def draw(self) -> None:
-        """Отрисовывает все сегменты змейки"""
-        for position in self.segments:
-            self.render_cell(position, SNAKE_COLOR)
+        """Отрисовывает змейку на экране и если {last} содержит
+        координаты старого сегмента, затирает его.
+        """
+        for position in self.positions:
+            self.draw_cell(position, SNAKE_COLOR)
 
-        if self.last_segment:
-            self.render_cell(self.last_segment, BOARD_BACKGROUND_COLOR, True)
+        if self.last:
+            self.draw_cell(self.last, BOARD_BACKGROUND_COLOR, True)
 
-    def move_forward(self, new_head: tuple[int, int]) -> None:
-        """Перемещает змейку на одну клетку вперед"""
-        self.segments.insert(0, new_head)
-        self.last_segment = self.segments.pop()
+    def move(self, new_head: tuple[int, int]) -> None:
+        """Сдвигает змейку на одну клетку игрового поля."""
+        self.positions.insert(0, new_head)
+        self.last = self.positions.pop()
 
-    def will_collide_with_self(self, new_head: tuple[int, int]) -> bool:
-        """Проверяет столкновение с собственным телом"""
-        return new_head in self.segments
+    def can_bite_itself(self, new_head: tuple[int, int]) -> bool:
+        """Проверяет может ли следующим ходом змейка укусить сама себя."""
+        return new_head in self.positions
 
-    def will_collide_with(self, new_head: tuple[int, int], object: GameObject) -> bool:
-        """Проверяет столкновение с другим объектом"""
+    def try_bite(self, new_head: tuple[int, int], object: GameObject) -> bool:
+        """Принимает на вход объект и проверяет можно ли его укусить."""
         return object.position == new_head
 
 
 class GameManager():
-    """Управляет общим состоянием и логикой игры"""
+    """Класс для управления общей логикой игры."""
 
     def __init__(self) -> None:
-        """Инициализирует менеджер игры с базовыми настройками"""
-        self.needs_reset: bool = False
-        self.is_new_game: bool = True
-        self.__game_active: bool = False
-        self.__slow_mode_counter: int = 0
-        self.__current_snake_length: int = 1
-        self.__apples_eaten: int = 0
-        self.__menu_active: bool = True
-        self.__selected_menu_item: int = 0
-        self.__menu_options: list = [
+        """Инициализирует экземпляр класса
+        и базовые атрибуты.
+        """
+        self.reset: bool = False
+        self.new_game: bool = True
+        self.__game_is_run: bool = False
+        self.__slow_count: int = 0
+        self.__snake_length: int = 1
+        self.__eaten_apples: int = 0
+        self.__status_menu: bool = True
+        self.__menu_value: int = 0
+        self.__menu_sections: list = [
             'Новая игра',
             'Продолжить',
             'Выход'
         ]
 
-    def is_running(self) -> bool:
-        """Проверяет активна ли игра"""
-        return self.__game_active
+    def is_run(self) -> bool:
+        """Возвращяет {True} если игра включена и {False} если нет."""
+        return self.__game_is_run
 
-    def start_game(self) -> None:
-        """Запускает игру"""
-        self.__game_active = True
+    def switch_on(self) -> None:
+        """Переключатель игры в положение - включено."""
+        self.__game_is_run = True
 
-    def stop_game(self) -> None:
-        """Останавливает игру"""
-        self.__game_active = False
+    def switch_off(self) -> None:
+        """Переключатель игры в положение - выключено."""
+        self.__game_is_run = False
 
-    def is_menu_open(self) -> bool:
-        """Проверяет открыто ли меню"""
-        return self.__menu_active
+    def menu_is_open(self) -> bool:
+        """Отображает статус меню (активно / не активно)."""
+        return self.__status_menu
 
-    def hide_menu(self) -> None:
-        """Скрывает игровое меню"""
-        self.__menu_active = False
+    def close_menu(self) -> None:
+        """Закрывает меню."""
+        self.__status_menu = False
 
-    def show_menu(self) -> None:
-        """Показывает игровое меню"""
-        self.__menu_active = True
+    def open_menu(self) -> None:
+        """Открывает меню."""
+        self.__status_menu = True
 
-    def select_previous_item(self) -> None:
-        """Перемещает выбор меню на предыдущий пункт"""
-        self.__selected_menu_item -= 1 if self.__selected_menu_item > 0 else 0
+    def menu_up(self) -> None:
+        """Передвижение по меню вверх."""
+        self.__menu_value -= 1 if self.__menu_value > 0 else 0
 
-    def select_next_item(self) -> None:
-        """Перемещает выбор меню на следующий пункт"""
-        max_index = len(self.__menu_options) - 1
-        if self.__selected_menu_item < max_index:
-            self.__selected_menu_item += 1
+    def menu_down(self) -> None:
+        """Передвижение по меню вниз."""
+        x = len(self.__menu_sections) - 1
+        if self.__menu_value < x:
+            self.__menu_value += 1
         else:
-            self.__selected_menu_item = max_index
+            self.__menu_value = x
 
-    def get_selected_option(self) -> str:
-        """Возвращает текущий выбранный пункт меню"""
-        return self.__menu_options[self.__selected_menu_item]
+    def menu_title(self) -> str:
+        """Возвращает название выбранного пункта меню."""
+        return self.__menu_sections[self.__menu_value]
 
-    def calculate_menu_spacing(self) -> int:
-        """Вычисляет вертикальное расстояние между пунктами меню"""
-        return (MENU_HEIGHT // (len(self.__menu_options) + 1))
+    def get_menu_step(self) -> int:
+        """Возвращает расстояние между пунктами меню исходя из размеров
+        высоты меню, заданных константой {MENU_HEIGHT}, и их количества.
+        """
+        return (MENU_HEIGHT // (len(self.__menu_sections) + 1))
 
-    def get_menu_options(self) -> list:
-        """Возвращает список доступных пунктов меню"""
-        return self.__menu_options
+    def get_menu_list(self) -> list:
+        """Возвращает списо из пунктов меню."""
+        return self.__menu_sections
 
-    def should_update(self, delay: int = SLOW_MODE_FPS) -> bool:
-        """Проверяет нужно ли обновлять состояние с учетом замедления"""
-        self.__slow_mode_counter += 1
-        if self.__slow_mode_counter > delay:
-            self.__slow_mode_counter = 0
+    def slow_mode(self, how_slow: int = SLOW_SPEED) -> bool:
+        """Возвращает {False} пока действует замедление для выбранного
+        блока кода, и {True} в момент когда код должен быть выполнен.
+        Работает по принципу пропуска кадров, количество пропущенных
+        кадров по умолчанию = {SLOW_SPEED}. Чем больше значение
+        тем сильнее замедление.
+        """
+        self.__slow_count += 1
+        if self.__slow_count > how_slow:
+            self.__slow_count = 0
 
-        return self.__slow_mode_counter == delay
+        return self.__slow_count == how_slow
 
-    def increment_score(self) -> None:
-        """Увеличивает счетчик съеденных яблок"""
-        self.__apples_eaten += 1
+    def update_eaten_apples(self) -> None:
+        """Обновляет количество съеденных яблок."""
+        self.__eaten_apples += 1
 
-    def update_snake_stats(self, length: int) -> None:
-        """Обновляет статистику о длине змейки"""
-        self.__current_snake_length = length
+    def update_snake_length(self, length: int) -> None:
+        """Обновляет значение длины зъмейки."""
+        self.__snake_length = length
 
-    def reset_stats(self) -> None:
-        """Сбрасывает игровую статистику"""
-        self.__current_snake_length = 1
-        self.__apples_eaten = 0
+    def reset_info(self) -> None:
+        """Сбрасывает информаци о текущей игре."""
+        self.__snake_length = 1
+        self.__eaten_apples = 0
 
-    def get_game_stats(self) -> str:
-        """Формирует строку с текущей игровой статистикой"""
-        return (
-            f'Длина змейки: {self.__current_snake_length} || '
-            f'Яблок съедено: {self.__apples_eaten} || '
+    def info(self) -> str:
+        """Выводит информацию об игре."""
+        info = (
+            f'Длина змейки: {self.__snake_length} || '
+            f'Яблок съедено: {self.__eaten_apples} || '
         )
-    
-"""Инициализируем основной класс игры"""
+        return info
+
+    def over(self) -> None:
+        """Реализует логику при проигрыше"""
+        pass
+
+
+"""Инициализируем {GameManager} для возможнисти управлять всей логикой."""
 game = GameManager()
 
-def handle_snake_input(snake: Snake) -> None:
-    """Обрабатывает пользовательский ввод для управления змейкой"""
+def handle_keys(snake: Snake) -> None:
+    """Отслеживает нажатые клавиши для управления змейкой."""
     keys = pg.key.get_pressed()
-    new_direction: Optional[tuple[int, int]] = None
+    direction: Optional[tuple[int, int]] = None
 
     if keys[pg.K_UP] and snake.direction != DOWN:
-        new_direction = UP
+        direction = UP
     elif keys[pg.K_DOWN] and snake.direction != UP:
-        new_direction = DOWN
+        direction = DOWN
     elif keys[pg.K_LEFT] and snake.direction != RIGHT:
-        new_direction = LEFT
+        direction = LEFT
     elif keys[pg.K_RIGHT] and snake.direction != LEFT:
-        new_direction = RIGHT
+        direction = RIGHT
 
-    if new_direction:
-        snake.set_direction(new_direction)
+    if direction:
+        snake.update_direction(direction)
 
 
-def handle_menu_input() -> None:
-    """Обрабатывает пользовательский ввод в меню"""
+def handle_keys_menu() -> None:
+    """Отслеживает нажатые клавиши для управления в меню."""
     keys = pg.key.get_pressed()
 
-    if keys[KEY_ENTER]:
-        selected_option = game.get_selected_option()
-        if selected_option == 'Новая игра':
-            if game.is_new_game:
-                game.is_new_game = False
-            else:
-                game.needs_reset = True
-            game.hide_menu()
-        elif selected_option == 'Продолжить' and not game.is_new_game:
-            game.hide_menu()
-        elif selected_option == 'Выход':
-            game.stop_game()
-            game.hide_menu()
+    if keys[KEY_ENTER] and game.menu_title() == 'Новая игра':
+        if game.new_game:
+            game.new_game = False
+        else:
+            game.reset = True
+        game.close_menu()
+    elif (keys[KEY_ENTER] and game.menu_title() == 'Продолжить'
+          and not game.new_game):
+        game.close_menu()
+    elif keys[KEY_ENTER] and game.menu_title() == 'Выход':
+        game.switch_off()
+        game.close_menu()
 
-    if game.should_update(1):
+    if game.slow_mode(1):
         if keys[pg.K_UP]:
-            game.select_previous_item()
+            game.menu_up()
         elif keys[pg.K_DOWN]:
-            game.select_next_item()
+            game.menu_down()
 
 
-def terminate_game() -> None:
-    """Корректно завершает игру"""
+def quit_game() -> None:
+    """Завершает игру."""
     pg.quit()
     raise SystemExit
 
 
-def check_exit_request() -> bool:
-    """Проверяет запрос на выход из игры"""
+def quit_pressed() -> bool:
+    """Реализует логику нажатия на клавишу ESCAPE."""
     keys = pg.key.get_pressed()
     for event in pg.event.get():
         if event.type == pg.QUIT or keys[pg.K_ESCAPE]:
-            if game.is_new_game:
-                game.stop_game()
+            if game.new_game:
+                game.switch_off()
             else:
                 return True
 
     return False
 
 
-def create_apples(count: int = INITIAL_APPLES,
-                 occupied_cells: list = []) -> tuple[list, list]:
-    """Создает заданное количество яблок на свободных клетках"""
+def get_apples(count: int = DEFAULT_COUNT_APPLES,
+                    used_cells: list = []) -> tuple[list, list]:
+    """Создает список хороших яблок. И возвращает его."""
     apples = []
     for _ in range(count):
-        apple = Apple(occupied_cells=occupied_cells)
+        apple = Apple(used_cells=used_cells)
         apples.append(apple)
-        occupied_cells.append(apple.position)
+        used_cells.append(apple.position)
 
-    return apples, occupied_cells
+    return apples, used_cells
 
 
-def create_stones(count: int = INITIAL_STONES,
-                 occupied_cells: list = []) -> tuple[list, list]:
-    """Создает заданное количество камней на свободных клетках"""
+def get_stones(count: int = DEFAULT_COUNT_STONES,
+               used_cells: list = []) -> tuple[list, list]:
+    """Создает список камней. И возвращает его."""
     stones = []
     for _ in range(count):
-        stone = Stone(occupied_cells=occupied_cells)
+        stone = Stone(used_cells=used_cells)
         stones.append(stone)
-        occupied_cells.append(stone.position)
+        used_cells.append(stone.position)
 
-    return stones, occupied_cells
-
-
-def get_occupied_positions(snake: Snake, obstacles: list[GameObject]) -> list:
-    """Собирает список всех занятых позиций на поле"""
-    return [obstacle.position for obstacle in obstacles] + snake.segments
+    return stones, used_cells
 
 
-def initialize_game_objects() -> tuple[Snake, list[GameObject]]:
-    """Создает начальное состояние игровых объектов"""
+def get_all_position(snake: Snake, obstacles: list[GameObject]) -> list:
+    """Возвращает список состоящий из координат всех
+    созданных объектов, змейка в список не входит.
+    """
+    return [obstacle.position for obstacle in obstacles] + snake.positions
+
+
+def init_game_obgects() -> tuple[Snake, list[GameObject]]:
+    """Инициализирует все игровые объекты."""
     snake = Snake()
-    occupied_cells = list.copy(snake.segments)
-    apples, occupied_cells = create_apples(occupied_cells=occupied_cells)
-    stones, occupied_cells = create_stones(occupied_cells=occupied_cells)
+    used_cells = list.copy(snake.positions)
+    good_apples, used_cells = get_apples(used_cells=used_cells)
+    stones, used_cells = get_stones(used_cells=used_cells)
 
-    return snake, [*apples, *stones]
+    return snake, [*good_apples, *stones]
 
 
-def restart_game(new_game: bool = False) -> tuple[Snake, list[GameObject]]:
-    """Перезапускает игру, сбрасывая или сохраняя статистику"""
+def reset_game(new_game: bool = False) -> tuple[Snake, list[GameObject]]:
+    """Сбрасывает змейку к исходному состоянию и задаёт ей случайное
+    направление. Всем препятствиям задаются новые координаты. Если
+    {new_game} = {True} информация об игре будет сброшена. Если
+    {new_game} = {False} информация об игре будет обновлена.
+    """
     if new_game:
-        game.reset_stats()
+        game.reset_info()
     else:
-        game.update_snake_stats(1)
+        game.update_snake_length(1)
         
-    return initialize_game_objects()
+    return init_game_obgects()
 
-
-def check_collision(new_head: tuple[int, int], snake: Snake,
+def snake_can_move(new_head: tuple[int, int], snake: Snake,
                    obstacles) -> bool:
-    """Проверяет столкновения и обрабатывает их последствия"""
-    if snake.will_collide_with_self(new_head):
-        game.needs_reset = True
+    """Проверяет есть ли на пути препятствия. Если нет то возвращает {True}
+    и змейка двигается дальше. Если есть препятствие, возвращется {False}.
+    В зависимости от препятсвия змейка вырастет, уменьшится или сбросится
+    в начальное состояние.
+    """
+    if snake.can_bite_itself(new_head):
+        game.reset = True
         return False
 
     for obstacle in obstacles:
-        if snake.will_collide_with(new_head, obstacle):
-            if isinstance(obstacle, Apple):
-                handle_apple_collision(snake, obstacle, obstacles)
-                return False
-            elif isinstance(obstacle, Stone):
-                handle_stone_collision(snake, obstacle, obstacles)
-                return False
+
+        if snake.try_bite(new_head, obstacle) and type(obstacle) is Apple:
+            if obstacle.name == 'apple':
+                snake.grow_up(obstacle.position)
+
+            game.update_eaten_apples()
+
+            if snake.length + len(obstacles) <= FIELD_SIZE:
+                all_positons = get_all_position(snake, obstacles)
+                obstacle.randomize_position(all_positons)
+            else:
+                game.reset = True
+
+            return False
+
+        elif snake.try_bite(new_head, obstacle) and type(obstacle) is Stone:
+            if snake.length <= obstacle.weight:
+                game.reset = True
+            else:
+                for _ in range(obstacle.weight):
+                    snake.cut_tail()
+                all_positons = get_all_position(snake, obstacles)
+                obstacle.randomize_position(all_positons)
+
+            return False
 
     return True
 
 
-def handle_apple_collision(snake: Snake, apple: Apple, obstacles: list) -> None:
-    """Обрабатывает столкновение змейки с яблоком"""
-    snake.add_segment(apple.position)
-    game.increment_score()
-
-    if snake.length + len(obstacles) <= TOTAL_CELLS:
-        occupied_positions = get_occupied_positions(snake, obstacles)
-        apple.place_randomly(occupied_positions)
-    else:
-        game.needs_reset = True
-
-
-def handle_stone_collision(snake: Snake, stone: Stone, obstacles: list) -> None:
-    """Обрабатывает столкновение змейки с камнем"""
-    if snake.length <= stone.damage:
-        game.needs_reset = True
-    else:
-        for _ in range(stone.damage):
-            snake.remove_tail()
-        occupied_positions = get_occupied_positions(snake, obstacles)
-        stone.place_randomly(occupied_positions)
-
-
-def render_menu():
-    """Отрисовывает игровое меню"""
-
+def draw_menu():
+    """Отрисовывает главное меню."""
     title_menu.fill('Black')
-    title_text = title_font.render('Змейка', True, 'White')
-    title_x = TITLE_MENU_WIDTH // 2
-    title_y = TITLE_MENU_HEIGHT // 2
-    title_rect = title_text.get_rect(center=(title_x, title_y))
-    title_menu.blit(title_text, title_rect)
+    text = title_font.render('Змейка', True, 'White')
+    txt_x, txt_y = TITLE_MENU_WIDTH // 2, TITLE_MENU_HEIGHT // 2
+    text_rect = text.get_rect(center=(txt_x, txt_y))
+    title_menu.blit(text, text_rect)
 
     main_menu.fill(MAIN_MENU_COLOR)
-    menu_border = (0, 0, MENU_WIDTH, MENU_HEIGHT)
-    spacing = game.calculate_menu_spacing()
+    rect = (0, 0, MENU_WIDTH, MENU_HEIGHT)
+    step = game.get_menu_step()
 
-    pg.draw.rect(main_menu, MENU_BORDER_COLOR, menu_border, 4)
-    current_y = spacing
+    pg.draw.rect(main_menu, MENU_BORDER_COLOR, rect, 4)
+    y_tmp = step
 
-    for option in game.get_menu_options():
-        if option == 'Продолжить' and game.is_new_game:
-            text = menu_font.render(option, True, 'DarkGray')
+    for item in game.get_menu_list():
+        if item == 'Продолжить' and game.new_game:
+            text = menu_font.render(item, True, 'DarkGray')
         else:
-            text = menu_font.render(option, True, 'Black')
-        text_rect = text.get_rect(center=(MENU_WIDTH // 2, current_y))
+            text = menu_font.render(item, True, 'Black')
+
+        text_rect = text.get_rect(center=(MENU_WIDTH // 2, y_tmp))
         main_menu.blit(text, text_rect)
 
-        if game.get_selected_option() == option:
-            highlighted_rect = text_rect.inflate(MENU_FONT_SIZE // 2, MENU_FONT_SIZE // 2)
-            pg.draw.rect(main_menu, SNAKE_COLOR, highlighted_rect, 5)
+        if game.menu_title() == item:
+            text_rect.inflate_ip(MENU_FONT_SIZE // 2, MENU_FONT_SIZE // 2)
+            pg.draw.rect(main_menu, SNAKE_COLOR, text_rect, 5)
 
-        current_y += spacing
+        y_tmp += step
 
     screen.blit(main_menu, main_menu_rect)
     screen.blit(title_menu, title_menu_rect)
 
 
 def main():
-    """Основной игровой цикл"""
-    snake, obstacles = initialize_game_objects()
-    game.start_game()
+    """Реализует базовую логику игры и инициализацию всех объектов."""
+    snake, obstacles = init_game_obgects()
+    game.switch_on()
 
-    while game.is_running():
+    while game.is_run():
         screen.blit(background_surface, (0, 0))
 
-        if game.is_menu_open():
-            set_window_title('Змейка || Основное меню')
-            if check_exit_request():
-                game.hide_menu()
+        if game.menu_is_open():
+            game_caption('Змейка || Основное меню')
+            if quit_pressed():
+                game.close_menu()
 
-            render_menu()
-            handle_menu_input()
-            
-            if game.needs_reset:
-                snake, obstacles = restart_game(True)
-                game.needs_reset = False
+            draw_menu()
+            handle_keys_menu()
+            if game.reset:
+                snake, obstacles = reset_game(True)
+                game.reset = False
         else:
-            if check_exit_request():
-                game.show_menu()
+            if quit_pressed():
+                game.open_menu()
 
             snake.draw()
             for obstacle in obstacles:
                 obstacle.draw()
 
-            handle_snake_input(snake)
+            handle_keys(snake)
 
-            if game.should_update():
-                new_head = snake.calculate_next_head()
+            if game.slow_mode():
+                new_head = snake.new_head()
 
-                if check_collision(new_head, snake, obstacles):
-                    snake.move_forward(new_head)
-                elif game.needs_reset:
-                    snake, obstacles = restart_game()
-                    game.needs_reset = False
+                if snake_can_move(new_head, snake, obstacles):
+                    snake.move(new_head)
+                elif game.reset:
+                    snake, obstacles = reset_game()
+                    game.reset = False
 
-            set_window_title(game.get_game_stats())
+            game_caption(game.info())
 
-        clock.tick(FPS)
+        clock.tick(GAME_SPEED)
         pg.display.update()
 
-    terminate_game()
+    quit_game()
+
 
 if __name__ == '__main__':
     main()
