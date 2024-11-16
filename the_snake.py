@@ -401,7 +401,6 @@ def quit_pressed() -> bool:
 def get_apples(count: int = DEFAULT_COUNT_APPLES,
                used_cells: list = []) -> tuple[list, list]:
     """Создает список хороших яблок. И возвращает его."""
-
     apples = []
     for _ in range(count):
         apple = Apple(used_cells=used_cells)
