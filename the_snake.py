@@ -1,12 +1,11 @@
-from random import choice, randint
+from random import choice
 from typing import Optional
-from time import time
 
 import pygame as pg
 
 pg.init()
 
-"""Константы для размеров поля и сетки""" 
+"""Константы для размеров поля и сетки"""
 SCREEN_WIDTH, SCREEN_HEIGHT = 640, 480
 MENU_WIDTH, MENU_HEIGHT = 200, 200
 TITLE_MENU_WIDTH, TITLE_MENU_HEIGHT = MENU_WIDTH, 50
@@ -150,6 +149,7 @@ class Stone(GameObject):
     def draw(self) -> None:
         """Рисует объет на экране."""
         self.draw_cell(self.position)
+
 
 class Snake(GameObject):
     """Класс описывающий игровой объект 'Змейка'."""
@@ -336,6 +336,7 @@ class GameManager():
 """Инициализируем {GameManager} для возможнисти управлять всей логикой."""
 game = GameManager()
 
+
 def handle_keys(snake: Snake) -> None:
     """Отслеживает нажатые клавиши для управления змейкой."""
     keys = pg.key.get_pressed()
@@ -399,6 +400,7 @@ def quit_pressed() -> bool:
 
 def get_apples(count: int = DEFAULT_COUNT_APPLES,
                     used_cells: list = []) -> tuple[list, list]:
+    
     """Создает список хороших яблок. И возвращает его."""
     apples = []
     for _ in range(count):
@@ -448,8 +450,9 @@ def reset_game(new_game: bool = False) -> tuple[Snake, list[GameObject]]:
         game.reset_info()
     else:
         game.update_snake_length(1)
-        
+
     return init_game_obgects()
+
 
 def snake_can_move(new_head: tuple[int, int], snake: Snake,
                    obstacles) -> bool:
